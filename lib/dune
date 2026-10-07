@@ -1,0 +1,3 @@
+(library
+ (name baba)
+ (preprocess (pps ppx_deriving.show)))

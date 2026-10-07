@@ -1,0 +1,4 @@
+(executable
+ (public_name baba)
+ (name main)
+ (libraries baba))
