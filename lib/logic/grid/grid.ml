@@ -80,6 +80,7 @@ let set_dir level id dir =
 
 let move level id dst =
   let { pos = src } as entry = Tbl.find level.entries id in
+  print_endline (Printf.sprintf "%d %d %d %d" src.x src.y dst.x dst.y);
   if src = dst then ()
   else
     matrix_remove level src id;

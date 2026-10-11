@@ -1,8 +1,11 @@
 open Grid
-open Entry
+open Grid.Entry
 open Rule
 open Vec2
-open Vec2i
+open Vec2.Vec2i
+open Tile
+open Tile.Word
+
 open Option.Syntax
 
 module Tbl = Grid.Tbl
@@ -13,41 +16,30 @@ type t = {
 
 (* would rather define this in a separate file but circular dependencies *)
 module Cmd = struct
-  type t = unit -> unit -> unit
-  (**
-    A single, reversible operation over a level, such as adding or moving an
-    entry. [command ()] applies the operation and return a function that will
-    undo it, i.e. bring the entire mutable state of the level to what it was
-    before the application.
-  *)
-
-  let add level entry () =
+  let add level entry =
     let id = Grid.add level.grid entry in
     fun () -> Grid.remove level.grid id
 
   let remove level id =
     let entry = Grid.get_by_id level.grid id in
-    fun () ->
-      Grid.remove level.grid id;
-      fun () -> Grid.add_with_id level.grid id entry
+    Grid.remove level.grid id;
+    fun () -> Grid.add_with_id level.grid id entry
 
   let move level id dst =
     let { pos = src } = Grid.get_by_id level.grid id in
-    fun () ->
-      Grid.move level.grid id dst;
-      fun () -> Grid.move level.grid id src
+    Grid.move level.grid id dst;
+    fun () -> Grid.move level.grid id src
 
   let set_tile level id tile =
     let { tile = prev_tile } = Grid.get_by_id level.grid id in
-    fun () ->
-      Grid.set_tile level.grid id tile;
-      fun () -> Grid.set_tile level.grid id prev_tile
+    Grid.set_tile level.grid id tile;
+    fun () -> Grid.set_tile level.grid id prev_tile
 end
 
 (* produce a sequence of words for Parse_rule.parse *)
 let word_seq level pos dir =
   let dir' = Dir.to_vec2i dir in
-  let rec recurse i () =
+  let rec recurse i =
     let word =
       let* tiles = Grid.get_all_at level.grid (pos +: dir' *: i) in
       tiles |> Tbl.to_seq_keys |> Seq.find_map (fun id ->
@@ -58,10 +50,11 @@ let word_seq level pos dir =
       )
     in
     match word with
-    | Some word -> Seq.Cons (word, recurse (i + 1))
+    | Some Well -> recurse (i + 2) (* skip this word and the next *)
+    | Some word -> Seq.Cons (word, fun () -> recurse (i + 1))
     | None -> Seq.Nil
   in
-  Seq.memoize (recurse 0)
+  Seq.memoize (fun () -> recurse 0)
 
 let step level dir =
   (* hashset of tile ids and the props they have *)
@@ -73,12 +66,12 @@ let step level dir =
     let { pos; tile; dir } = Grid.get_by_id level.grid id in
 
     let matches_noun tile noun =
-      match (noun : Tile.Noun.t) with
-      | Special All -> true
-      | Special Empty -> false
-      | Obj obj ->
+      match noun with
+      | Noun.Special All -> true
+      | Noun.Special Empty -> false
+      | Noun.Object obj ->
           begin match (tile : Tile.t) with
-          | Obj tile_obj -> tile_obj = obj
+          | Object tile_obj -> tile_obj = obj
           | _ -> false
           end
     in
@@ -145,7 +138,7 @@ let step level dir =
     let is_pushable id =
       match (Grid.get_by_id level.grid id).tile with
       | Word _ -> true
-      | Obj _ -> has_prop id Push
+      | Object _ -> has_prop id Push
     in
 
     (* None => the nudge failed *)
@@ -192,7 +185,7 @@ let step level dir =
             begin match noun with
             | Special All -> None
             | Special Empty -> Some (Cmd.remove level id)
-            | Obj obj -> Some (Cmd.set_tile level id (Obj obj))
+            | Object obj -> Some (Cmd.set_tile level id (Object obj))
             end
         | _ -> None
       )
@@ -202,7 +195,7 @@ let step level dir =
   movements @ transformations
 
 let example () =
-  let grid = Grid.create 15 11 in
+  let grid = Grid.create 15 20 in
 
   let add x y ?(dir = Dir.Right) tile =
     Grid.add grid (Grid.Entry.create { x; y } tile dir) |> ignore
@@ -210,32 +203,33 @@ let example () =
  
   [3; 7] |> List.iter (fun y ->
     for x = 2 to 12 do
-      add x y (Obj Wall)
+      add x y (Object Wall)
     done
   );
 
-  add  3  5 (Obj Blum);
-  add  7  4 (Obj Rock);
-  add  7  5 (Obj Hi);
-  add  7  6 (Obj Rock);
-  add 11  5 (Obj Flag);
+  add  3  5 (Object Blum);
+  add  7  4 (Object Rock);
+  add  7  5 (Object Hi);
+  add  7  6 (Object Rock);
+  add 11  5 (Object Flag);
 
-  add  2  2 (Word (Noun (Obj Blum)));
+  add  2  2 (Word (Noun (Object Blum)));
   add  3  2 (Word (Verb Is));
-  add  4  2 (Word (Prop You));
+  add  4  2 (Word Well);
+  add  6  2 (Word (Prop You));
  
-  add 10  2 (Word (Noun (Obj Flag)));
+  add 10  2 (Word (Noun (Object Flag)));
   add 11  2 (Word (Verb Is));
   add 12  2 (Word (Prop Win));
 
-  add  2  8 (Word (Noun (Obj Wall)));
+  add  2  8 (Word (Noun (Object Wall)));
   add  3  8 (Word (Verb Is));
   add  4  8 (Word (Prop Stop));
  
-  add  8  8 (Word (Noun (Obj Rock)));
+  add  8  8 (Word (Noun (Object Rock)));
   add  9  8 (Word And);
-  add 10  8 (Word (Noun (Obj Hi)));
+  add 10  8 (Word (Noun (Object Hi)));
   add 11  8 (Word (Verb Is));
   add 12  8 (Word (Prop Push));
 
-  { grid = grid }
+  grid

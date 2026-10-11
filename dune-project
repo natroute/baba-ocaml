@@ -15,6 +15,6 @@
 
 (package
  (name baba)
- (depends ocaml raylib))
+ (depends ocaml raylib ppx_enumerate))
 
 ; See the complete stanza docs at https://dune.readthedocs.io/en/stable/reference/dune-project/index.html

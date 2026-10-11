@@ -7,6 +7,7 @@ module rec Vec2i : sig
   val (+:) : t -> t -> t
   val (-:) : t -> t -> t
   val ( *: ) : t -> int -> t
+  val ( /: ) : t -> int -> t
 
   val length : t -> float
 
@@ -20,6 +21,7 @@ end = struct
   let (+:) = map2 (+)
   let (-:) = map2 (-)
   let ( *: ) v s = map (( * ) s) v
+  let (/:) v s = map (fun c -> c / s) v
 
   let length { x; y } = hypot (Float.of_int x) (Float.of_int y)
 
@@ -36,6 +38,7 @@ and Vec2f : sig
   val (+!) : t -> t -> t
   val (-!) : t -> t -> t
   val ( *! ) : t -> float -> t
+  val (/!) : t -> float -> t
 
   val length : t -> float
 
@@ -49,6 +52,7 @@ end = struct
   let (+!) = map2 (+.)
   let (-!) = map2 (-.)
   let ( *! ) v s = map (( *. ) s) v
+  let (/!) v s = map (fun c -> c /. s) v
 
   let length { x; y } = hypot x y
 
