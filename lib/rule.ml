@@ -1,11 +1,11 @@
-type subject_cond =
+type selector_cond =
 | On of Tile.Noun.t
 | Feeling of Tile.prop
 
-type subject = {
+type selector = {
   noun : Tile.Noun.t;
   negative : bool;
-  conds : subject_cond list;
+  conds : selector_cond list;
 }
 
 type clause =
@@ -14,6 +14,6 @@ type clause =
 | Make of Tile.Noun.t
 
 type t = {
-  subject : subject;
+  selector : selector;
   clause : clause;
 }

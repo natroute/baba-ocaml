@@ -1,17 +1,24 @@
-module Noun = struct
-  type entity =
-  | Baba
+type obj =
+| Blum
+| Flag
+| Wall
+| Rock
+| Hi
 
+module Noun = struct
   type special =
   | All
+  | Empty
 
   type t =
-  | Entity of entity
+  | Obj of obj
   | Special of special
 end
 
 type prop =
 | You
+| Win
+| Stop
 | Push
 
 type verb =
@@ -29,3 +36,7 @@ type word =
 | Prep of prep
 | And
 | Not
+
+type t =
+| Obj of obj
+| Word of word

@@ -1,98 +1,91 @@
-exception Stop
-
-let map_fst = Pair.map_fst
-
 let parse seq =
+  (*
+    A common pattern here is the following:
+  
+    {[
+    match seq () with
+    | Seq.Cons (X, seq) -> Y
+    | _ -> Z, seq
+    ]}
+  
+    To make an analogy to imperative logic (because I can't think of any other
+    way to explain this (skill issue)), the [seq ()] is _sort of_ like
+    consuming the next token. If the token matches _X_, we do some stuff _Y_
+    with it. If it doesn't, we return the state of the sequence as it was
+    before we "consumed" the token, in order to "backtrack".
+  *)
+
+  let (>>|) (x, y) f = (f x, y) in
+  let (let+) = (>>|) in
+
   let next seq =
     match seq () with
     | Seq.Cons (x, seq) -> (x, seq)
-    | Seq.Nil -> raise Stop
+    | Seq.Nil -> raise Exit
   in
+
+  let parse_noun seq = next seq >>| function Tile.Noun x -> x | _ -> raise Exit in
+  let parse_prop seq = next seq >>| function Tile.Prop x -> x | _ -> raise Exit in
+  let parse_verb seq = next seq >>| function Tile.Verb x -> x | _ -> raise Exit in
 
   let rec parse_negative seq =
     match seq () with
-    | Seq.Cons (Tile.Not, seq) -> parse_negative seq |> map_fst not
-    | node -> false, (fun () -> node)
+    | Seq.Cons (Tile.Not, seq) -> parse_negative seq >>| not
+    | _ -> false, seq
   in
 
-  let parse_noun seq =
-    next seq |> map_fst (
-      function
-      | Tile.Noun noun -> noun
-      | _ -> raise Stop
-    )
-  in
-
-  let parse_prop seq =
-    next seq |> map_fst (
-      function
-      | Tile.Prop prop -> prop
-      | _ -> raise Stop
-    )
-  in
-
-  let parse_verb seq =
-    next seq |> map_fst (
-      function
-      | Tile.Verb verb -> verb
-      | _ -> raise Stop
-    )
-  in
-
-  let parse_subjects seq =
-    let parse_subject seq =
+  let parse_selectors seq =
+    let parse_selector seq =
       let parse_conds seq =
         let parse_cond seq prep =
           match prep with
           | Tile.On ->
-              parse_noun seq |> map_fst (fun noun -> Rule.On noun)
+              let+ noun = parse_noun seq in Rule.On noun
           | Tile.Feeling ->
-              parse_prop seq |> map_fst (fun prop -> Rule.Feeling prop)
+              let+ prop = parse_prop seq in Rule.Feeling prop
         in
 
         let rec recurse seq =
           match seq () with
           | Seq.Cons (Tile.Prep prep, seq) ->
               let cond, seq = parse_cond seq prep in
-              let t, seq = recurse seq in
-              (cond :: t, seq)
-          | node -> [], fun () -> node
+              recurse seq >>| List.cons cond
+          | _ -> [], seq
         in
 
-        recurse seq |> map_fst List.rev
+        recurse seq
       in
 
       let negative, seq = parse_negative seq in
       let noun, seq = parse_noun seq in
       let conds, seq = parse_conds seq in
-      ({ Rule.noun; negative; conds }, seq)
+      { Rule.noun; negative; conds }, seq
     in
     
     let rec recurse seq =
       match seq () with
       | Seq.Cons (Tile.And, seq) ->
-          let cond, seq = parse_subject seq in
-          recurse seq |> map_fst (fun t -> cond :: t)
-      | node -> [], fun () -> node
+          let selector, seq = parse_selector seq in
+          recurse seq >>| List.cons selector
+      | _ -> [], seq
     in
 
-    let first, seq = parse_subject seq in
-    let subjects, seq = recurse seq in
-    (first :: subjects, seq)
+    let first, seq = parse_selector seq in
+    let rest, seq = recurse seq in
+    first :: rest, seq
   in
 
   let parse_clauses seq =
     let parse_clause seq verb =
       match verb with
       | Tile.Is ->
-          next seq |> map_fst (
-            function
-            | Tile.Prop prop -> Rule.Is_prop prop
-            | Tile.Noun noun -> Rule.Is_noun noun
-            | _ -> raise Stop
-          )
+          next seq >>| begin function
+          | Tile.Prop prop -> Rule.Is_prop prop
+          | Tile.Noun noun -> Rule.Is_noun noun
+          | _ -> raise Exit
+          end
       | Tile.Make ->
-          parse_noun seq |> map_fst (fun noun -> Rule.Make noun)
+          let+ noun = parse_noun seq in Rule.Make noun
     in
 
     let rec recurse seq prev_verb =
@@ -101,27 +94,30 @@ let parse seq =
           let verb, seq =
             match seq () with
             | Seq.Cons (Tile.Verb verb, seq) -> verb, seq
-            | node -> prev_verb, fun () -> node
+            | _ -> prev_verb, seq
           in
-          let cond, seq = parse_clause seq verb in
-          recurse seq verb |> map_fst (fun t -> cond :: t)
-      | node -> [], fun () -> node
+          begin try
+            let clause, seq = parse_clause seq verb in
+            recurse seq verb >>| List.cons clause
+          with Exit -> [], seq end
+      | _ -> [], seq
     in
 
     let first_verb, seq = parse_verb seq in
     let first, seq = parse_clause seq first_verb in
     let rest, seq = recurse seq first_verb in
-    (first :: rest, seq)
+    first :: rest, seq
   in
 
   try
-    let subjects, seq = parse_subjects seq in
+    let selectors, seq = parse_selectors seq in
     let clauses, seq = parse_clauses seq in
     Some (
-      subjects |> List.map (fun subject ->
-        clauses |> List.map (fun clause -> { Rule.subject; clause })
+      selectors |> List.concat_map (fun selector ->
+        clauses |> List.map (fun clause ->
+          { Rule.selector; clause }
+        )
       )
-      |> List.concat
     )
   with
-    Stop -> None
+    Exit -> None
